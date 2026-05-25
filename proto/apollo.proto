@@ -1,0 +1,202 @@
+syntax = "proto3";
+
+package apollo.rpc;
+
+enum TaskPhase {
+  TASK_PHASE_MAP = 0;
+  TASK_PHASE_REDUCE = 1;
+}
+
+enum JobState {
+  JOB_STATE_PENDING = 0;
+  JOB_STATE_RUNNING = 1;
+  JOB_STATE_COMPLETED = 2;
+  JOB_STATE_FAILED = 3;
+}
+
+enum TaskState {
+  TASK_STATE_QUEUED = 0;
+  TASK_STATE_ASSIGNED = 1;
+  TASK_STATE_RUNNING = 2;
+  TASK_STATE_COMPLETED = 3;
+  TASK_STATE_FAILED = 4;
+  TASK_STATE_REQUEUED = 5;
+}
+
+message WordCount {
+  string word = 1;
+  int32 count = 2;
+}
+
+message SubmitJobRequest {
+  string name = 1;
+  string input = 2;
+  int32 map_tasks = 3;
+  int32 reduce_tasks = 4;
+}
+
+message SubmitJobReply {
+  string job_id = 1;
+  bool accepted = 2;
+  string leader_hint = 3;
+}
+
+message JobStatusRequest {
+  string job_id = 1;
+}
+
+message JobStatusReply {
+  string job_id = 1;
+  JobState state = 2;
+  uint32 total_tasks = 3;
+  uint32 completed_tasks = 4;
+  string leader_hint = 5;
+}
+
+message JobResultRequest {
+  string job_id = 1;
+}
+
+message JobResultReply {
+  string job_id = 1;
+  JobState state = 2;
+  repeated WordCount counts = 3;
+  string leader_hint = 4;
+}
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  string worker_address = 2;
+  double speed_multiplier = 3;
+}
+
+message RegisterWorkerReply {
+  bool accepted = 1;
+  string leader_hint = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+}
+
+message HeartbeatReply {
+  bool accepted = 1;
+  string leader_hint = 2;
+}
+
+message ExecuteTaskRequest {
+  string job_id = 1;
+  TaskPhase phase = 2;
+  int32 task_index = 3;
+  int32 attempt_id = 4;
+  int32 reducers = 5;
+  string input_partition = 6;
+  repeated WordCount map_outputs = 7;
+}
+
+message ExecuteTaskReply {
+  bool success = 1;
+  repeated WordCount counts = 2;
+}
+
+message RegisterWorkerCommand {
+  string worker_id = 1;
+  string worker_address = 2;
+  double speed_multiplier = 3;
+}
+
+message SubmitJobCommand {
+  string job_id = 1;
+  string name = 2;
+  string input = 3;
+  int32 map_tasks = 4;
+  int32 reduce_tasks = 5;
+}
+
+message AssignTaskCommand {
+  string job_id = 1;
+  TaskPhase phase = 2;
+  int32 task_index = 3;
+  int32 attempt_id = 4;
+  string worker_id = 5;
+  bool speculative = 6;
+}
+
+message CompleteTaskCommand {
+  string job_id = 1;
+  TaskPhase phase = 2;
+  int32 task_index = 3;
+  int32 attempt_id = 4;
+  string worker_id = 5;
+  repeated WordCount counts = 6;
+}
+
+message WorkerFailedCommand {
+  string worker_id = 1;
+}
+
+message LogCommand {
+  int64 index = 1;
+  int64 term = 2;
+  oneof payload {
+    RegisterWorkerCommand register_worker = 3;
+    SubmitJobCommand submit_job = 4;
+    AssignTaskCommand assign_task = 5;
+    CompleteTaskCommand complete_task = 6;
+    WorkerFailedCommand worker_failed = 7;
+  }
+}
+
+message RequestVoteRequest {
+  int64 term = 1;
+  string candidate_id = 2;
+  int64 last_log_index = 3;
+  int64 last_log_term = 4;
+}
+
+message RequestVoteReply {
+  int64 term = 1;
+  bool vote_granted = 2;
+}
+
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 leader_commit = 3;
+  repeated LogCommand entries = 4;
+}
+
+message AppendEntriesReply {
+  int64 term = 1;
+  bool success = 2;
+  int64 match_index = 3;
+}
+
+// ApolloPrimary is the client-facing and worker-facing control-plane service.
+// Only the current leader accepts mutating requests such as job submission and
+// worker registration. Followers return leader hints so clients can retry.
+service ApolloPrimary {
+  // SubmitJob submits a MapReduce word-count job to the primary leader.
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobReply);
+
+  // GetJobStatus returns the current lifecycle state and task counts for a job.
+  rpc GetJobStatus(JobStatusRequest) returns (JobStatusReply);
+
+  // GetJobResult returns the final word-count output once the job completes.
+  rpc GetJobResult(JobResultRequest) returns (JobResultReply);
+
+  // RegisterWorker registers a worker with the current primary leader.
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+
+  // Heartbeat refreshes worker liveness at the current primary leader.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
+}
+
+service ApolloWorker {
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply);
+}
+
+service ApolloConsensus {
+  rpc RequestVote(RequestVoteRequest) returns (RequestVoteReply);
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesReply);
+}

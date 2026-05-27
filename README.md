@@ -1,4 +1,4 @@
-# Apollo: A Raft-Backed Distributed MapReduce Control Plane
+# Apollo: A Raft-Based Distributed MapReduce Control Plane
 
 Apollo is a lightweight distributed MapReduce control-plane implementation written in C++17. It uses real gRPC services over localhost to model communication between clients, replicated primary nodes, and workers. For primary failover, Apollo uses a simplified Raft-style replicated metadata log designed for the lab test environment.
 
